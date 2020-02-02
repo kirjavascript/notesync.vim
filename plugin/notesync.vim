@@ -1,13 +1,14 @@
 let s:endpoint = get(g:, 'notesURL', 'http://localhost') . ':4096'
 let s:path = expand('<sfile>:p:h') . '/notes/'
-let s:password = ''
+let s:keypath = expand('<sfile>:p:h') . '/.key'
 let s:helpLines = 3
 
 function! s:Curl()
-    if len(s:password)
-        let l:creds = shellescape('vim:' . s:password)
+    if filereadable(s:keypath)
+        let l:creds = shellescape('vim:' . readfile(s:keypath))
         return 'curl --user ' . l:creds . ' '
     else
+        echoerr 'secret key missing'
         return 'curl '
     endif
 endfunction
