@@ -13,7 +13,6 @@ function diff(local, remote) {
     const prepend = (prefix, value) => (
         value.trim().split('\n').map(d => prefix + d).join('\n')
     );
-    console.log(local, remote);
     return diff.map(item => {
         if (item.added) {
             return prepend('+ ', item.value);
@@ -25,22 +24,37 @@ function diff(local, remote) {
     }).join('\n');
 }
 
-function merge(local, remote) {
-    const diff = Diff.diffLines(remote, local);
-    const prepend = (prefix, value) => (
-        value.trim().split('\n').map(d => prefix + d).join('\n')
-    );
-    return diff.map(item => {
-        return item.value.trim();
-    }).join('\n');
-}
-
 (async () => {
     const exists = async (dir) => !!await fs.stat(dir).catch(_ => false);
     const dir = path.join(__dirname, '/notes');
+    const keyPath = path.join(__dirname, '/.key');
     if (!await exists(dir)) {
         await fs.mkdir(dir);
     }
+
+    if (!await exists(keyPath)) {
+        console.log('secret key missing');
+        process.exit(0);
+    }
+
+    const key = await fs.readFile(keyPath, 'utf8');
+
+    app.use('*', (req, res, next) => {
+        const Xauth = req.headers['x-authorization'];
+        const authorization = Xauth || req.headers.authorization;
+        if (authorization && basicAuth.test(authorization)) {
+            const [, creds] = authorization.match(basicAuth);
+            const credsString = Buffer.from(creds, 'base64').toString();
+            const [, password] = credsString.match(/^(?:[^:]*):(.*)$/);
+            if (password !== key) {
+                res.status(401).send('401');
+            } else {
+                next();
+            }
+        } else {
+            res.status(401).send('401');
+        }
+    });
 
     app.use('*', (req, res, next) => {
         req.getPath = () => (
@@ -50,16 +64,35 @@ function merge(local, remote) {
         next();
     });
 
-    app.post('/ns/:name', async (req, res) => {
-        const notePath = req.getPath();
-        const note = await exists(notePath) ? await fs.readFile(notePath, 'utf8') : '';
+    const view = (path, callback) => {
+        app.post(path, async (req, res) => {
+            const notePath = req.getPath();
+            const note = await exists(notePath) ? await fs.readFile(notePath, 'utf8') : '';
+            callback(note, req, res)
+        });
+    }
+
+    view('/ns/:name', (note, req, res) => {
         res.send(diff(note, req.body));
     });
 
-    app.post('/nd/:name', async (req, res) => {
-        const notePath = req.getPath();
-        const note = await exists(notePath) ? await fs.readFile(notePath, 'utf8') : '';
-        res.send(merge(note, req.body));
+    view('/nd/:name', (note, req, res) => {
+        const diff = Diff.diffLines(note, req.body);
+        res.send(diff.filter(d => d.added).map(item => item.value.trim()).join('\n'));
+    });
+
+    view('/nf/:name', (note, req, res) => {
+        const diff = Diff.diffLines(note, req.body);
+        res.send(diff.filter(d => d.removed).map(item => item.value.trim()).join('\n'));
+    });
+
+    view('/ng/:name', (note, req, res) => {
+        const diff = Diff.diffLines(note, req.body);
+        res.send(diff.map(item => item.value.trim()).join('\n'));
+    });
+
+    view('/nh/:name', (note, _req, res) => {
+        res.send(note);
     });
 
     app.post('/nw/:name', async (req, res) => {

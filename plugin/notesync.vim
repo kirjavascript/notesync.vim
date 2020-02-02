@@ -19,19 +19,14 @@ endfunction
 
 function! s:Post(url, body)
     let l:url = s:endpoint . a:url
-    let l:exec = s:Curl() . '-H "Content-Type: text/plain" -s -d @- ' . l:url
+    let l:exec = s:Curl() . '-H "Content-Type: text/plain" -s --data-binary @- ' . l:url
     return system(l:exec, a:body)
 endfunction
 
 function! s:GetBuffer(name)
     let l:name = expand('%')
     if l:name != a:name
-        " if bufwinnr(a:name) > 0
-        "     enew
-        "     silent execute 'file ' . a:name
-        " else
-            silent execute 'edit ' . a:name
-        " endif
+        silent execute 'edit ' . a:name
     endif
     setlocal noswapfile
     setlocal nowrap
@@ -106,6 +101,9 @@ function! notesync#Open()
 
         noremap <buffer> <silent> <leader>ns :call notesync#View('/ns/')<cr>
         noremap <buffer> <silent> <leader>nd :call notesync#View('/nd/')<cr>
+        noremap <buffer> <silent> <leader>nf :call notesync#View('/nf/')<cr>
+        noremap <buffer> <silent> <leader>ng :call notesync#View('/ng/')<cr>
+        noremap <buffer> <silent> <leader>nh :call notesync#View('/nh/')<cr>
         noremap <buffer> <silent> <leader>nw :call notesync#Push()<cr>
         augroup Open
             autocmd!
@@ -116,16 +114,19 @@ endfunction
 
 function! notesync#View(path)
     let l:name = expand('%')
-    let l:diff = s:Post(a:path . l:name, getline(1, '$'))
+    let l:diff = s:Post(a:path . l:name, readfile(s:path . l:name))
     keepjumps normal! gg"_dG
     put = l:diff
     keepjumps normal! gg"_dd
 endfunction
 
 function! notesync#Push()
-    call notesync#Save()
-    let l:name = expand('%')
-    s:Post('/nw/' . l:name, readfile(s:path . l:name))
+    if confirm('push local changes remotely? ' . l:name, "&Ok\n&Cancel") == 1
+        call notesync#Save()
+        let l:name = expand('%')
+        call s:Post('/nw/' . l:name, readfile(s:path . l:name))
+        echo 'pushed ' . l:name
+    endif
 endfunction
 
 function! notesync#Save()
