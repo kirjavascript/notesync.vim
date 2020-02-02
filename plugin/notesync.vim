@@ -1,28 +1,51 @@
-" let s:endpoint = get(g:, 'notesyncURL', 'http://nibblr.pw')
 let s:endpoint = get(g:, 'notesURL', 'http://localhost:4096')
 let s:password = ''
-let s:help="notesync command editor - " . s:endpoint ."
-         \\n o:open a:add D:delete l:lock s:star S:sudo
-         \\n--------------------------------------------"
+let s:help="📝 notes - " . s:endpoint ."
+         \\n o:open a:add D:delete
+         \\n-----------------------"
 let s:helpLines = 3
 let s:list = []
 
-function! notesync#List()
-    let l:list = s:GetJSON('command/list')
-    if type(l:list) != v:t_list
-        echom 'notesync: no listing returned from ' . s:endpoint
-        return
+function! s:Curl()
+    if len(s:password)
+        let l:creds = shellescape('vim:' . s:password)
+        return 'curl --user ' . l:creds . ' '
+    else
+        return 'curl '
     endif
-    let s:list = l:list
+endfunction
 
-    enew
-    put=s:help
+function! s:Fetch(url)
+    let l:url = s:endpoint . a:url
+    return system(s:Curl() . '--silent ' . l:url)
+endfunction
+
+function! s:Post(url, body)
+    let l:url = s:endpoint . a:url
+    let l:exec = s:Curl() . '-H "Content-Type: application/json" -s -d @- ' . l:url
+    return system(l:exec, a:body)
+endfunction
+
+function! s:GetBuffer(name)
+    if bufwinnr(a:name) > 0
+        enew
+        silent execute 'file ' . a:name
+    else
+        silent execute 'edit ' . a:name
+        keepjumps normal! gg"_dG
+        setlocal modifiable
+    endif
+endfunction
+
+function! notesync#List()
+
+    " needs to work offline
+    echo 'loading notes'
+    let l:list = s:Fetch('/list')
+    call s:GetBuffer('/notes/')
+    put = s:help
     keepjumps normal! gg"_ddG
-
-    for command in s:list
-        put = s:RenderLine(command)
-    endfor
-    keepjumps normal! gg
+    put = l:list
 
     let &modified = 0
     setlocal buftype=nofile
@@ -31,20 +54,20 @@ function! notesync#List()
     setlocal nomodifiable
 
     set filetype=notesync
-    syntax match Type /★/
-    syntax match Include /🔒/
-    syntax match Operator /^\(\S*\)/
-    syntax match Comment /\%3l-/
-    syntax match String /\%1lnibblr/
-    syntax match Constant /\%1ljr/
-    syntax match Type /\%2l\(\S\):/
+    " syntax match Type /★/
+    " syntax match Include /🔒/
+    " syntax match Operator /^\(\S*\)/
+    " syntax match Comment /\%3l-/
+    " syntax match String /\%1lnibblr/
+    " syntax match Constant /\%1ljr/
+    " syntax match Type /\%2l\(\S\):/
 
-    noremap <buffer> <silent> o :call notesync#Get()<cr>
-    noremap <buffer> <silent> S :call notesync#Sudo()<cr>
-    noremap <buffer> <silent> D :call notesync#Delete()<cr>
-    noremap <buffer> <silent> l :call notesync#Lock()<cr>
-    noremap <buffer> <silent> s :call notesync#Star()<cr>
-    noremap <buffer> <silent> a :call notesync#Add()<cr>
+    " noremap <buffer> <silent> o :call notesync#Get()<cr>
+    " noremap <buffer> <silent> S :call notesync#Sudo()<cr>
+    " noremap <buffer> <silent> D :call notesync#Delete()<cr>
+    " noremap <buffer> <silent> l :call notesync#Lock()<cr>
+    " noremap <buffer> <silent> s :call notesync#Star()<cr>
+    " noremap <buffer> <silent> a :call notesync#Add()<cr>
 endfunction
 
 function! notesync#Get()
@@ -174,37 +197,6 @@ function! s:RenderLine(command)
         let l:line .= ' 🔒'
     endif
     return l:line
-endfunction
-
-function! s:GetCommandName()
-    let l:name = getline('.')
-    " strip everything after the first space
-    return substitute(l:name, " .*", "", "")
-endfunction
-
-function! s:Curl()
-    if len(s:password)
-        let l:creds = shellescape('vim:' . s:password)
-        return 'curl --user ' . l:creds . ' '
-    else
-        return 'curl '
-    endif
-endfunction
-
-function! s:GetJSON(url)
-    let l:url = s:endpoint . '/api/' . a:url
-    return json_decode(system(s:Curl() . '--silent ' . l:url))
-endfunction
-
-function! s:PostJSON(url, obj)
-    let l:url = s:endpoint . '/api/' . a:url
-    let l:exec = s:Curl() . '-H "Content-Type: application/json" -s -d @- ' . l:url
-    let json = system(l:exec, json_encode(a:obj))
-    return json_decode(json)
-endfunction
-
-function s:Flip(var)
-    return a:var ? v:false : v:true
 endfunction
 
 function! s:UrlEncode(string)

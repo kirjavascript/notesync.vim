@@ -30,7 +30,7 @@ app.listen(4096);
         }
     });
 
-    app.get('/n/:name', async (req, res) => {
+    app.post('/n/:name', async (req, res) => {
         const notePath = path.join(dir, req.params.name)
         if (await exists(notePath)) {
             console.log('todo: merge');
