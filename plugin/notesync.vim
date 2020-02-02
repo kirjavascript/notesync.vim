@@ -1,11 +1,7 @@
-let s:endpoint = get(g:, 'notesURL', 'http://localhost:4096')
+let s:endpoint = get(g:, 'notesURL', 'http://localhost') . ':4096'
 let s:path = expand('<sfile>:p:h') . '/notes/'
 let s:password = ''
-let s:help="📝 notes - " . s:endpoint ."
-         \\n o:open a:add d:diff D:delete
-         \\n------------------------------"
 let s:helpLines = 3
-let s:list = []
 
 function! s:Curl()
     if len(s:password)
@@ -23,7 +19,7 @@ endfunction
 
 function! s:Post(url, body)
     let l:url = s:endpoint . a:url
-    let l:exec = s:Curl() . '-H "Content-Type: application/json" -s -d @- ' . l:url
+    let l:exec = s:Curl() . '-H "Content-Type: text/plain" -s -d @- ' . l:url
     return system(l:exec, a:body)
 endfunction
 
@@ -44,40 +40,55 @@ function! s:GetBuffer(name)
     keepjumps normal! gg"_dG
 endfunction
 
-function! s:DrawList()
+function! s:DrawListing(help)
     setlocal modifiable
     keepjumps normal! gg"_dG
-    put = s:help
+    put = '📝 notes - ' . s:endpoint
+    put = ' ' . a:help . ' '
+    put = repeat('-', len(a:help) + 2)
+
+    syntax match Include /📝/
+    syntax match Comment /\%3l-/
+    syntax match Constant /\%1l.*/
+    syntax match Type /\%2l\(\S\):/
+    syntax match Error /\- .*/
+    syntax match String /+ .*/
+
     keepjumps normal! gg"_ddG
-    for note in readdir(s:path)
-        put = note
-    endfor
+endfunction
+
+function! s:LockBuffer()
     keepjumps normal! gg
     let &modified = 0
     setlocal nomodifiable
+    setlocal buftype=nofile
 endfunction
 
 function! notesync#List()
     call mkdir(s:path, 'p')
     call s:GetBuffer('.notes')
-    call s:DrawList()
-    setlocal buftype=nofile
-
-    syntax match Include /📝/
-    syntax match Constant /^\(\S*\)/
-    syntax match Comment /\%3l-/
-    syntax match String /\%1l.*/
-    syntax match Type /\%2l\(\S\):/
+    call s:DrawListing('o:open a:add d:diff D:delete')
+    for note in readdir(s:path)
+        put = note
+    endfor
+    call s:LockBuffer()
 
     noremap <buffer> <silent> o :call notesync#Open()<cr>
     noremap <buffer> <silent> a :call notesync#Add()<cr>
-    " noremap <buffer> <silent> d :call notesync#ListDiff()<cr>
+    noremap <buffer> <silent> d :call notesync#ListDiff()<cr>
     noremap <buffer> <silent> D :call notesync#Delete()<cr>
+endfunction
 
-    augroup List
-        autocmd!
-        autocmd FocusGained <buffer> call s:DrawList()
-    augroup END
+function! notesync#ListDiff()
+    let l:newlist = s:Post('/list', join(readdir(s:path), '/'))
+    call s:GetBuffer('.notes.diff')
+    call s:DrawListing('d:local')
+    put = l:newlist
+    call s:LockBuffer()
+
+    noremap <buffer> <silent> d :call notesync#List()<cr>
+
+    " open should open & merge
 endfunction
 
 function! notesync#Open()
@@ -89,11 +100,32 @@ function! notesync#Open()
         let &modified = 0
         setlocal fileformat=unix
         setlocal buftype=acwrite
+
+        syntax match Error /\- .*/
+        syntax match String /+ .*/
+
+        noremap <buffer> <silent> <leader>ns :call notesync#View('/ns/')<cr>
+        noremap <buffer> <silent> <leader>nd :call notesync#View('/nd/')<cr>
+        noremap <buffer> <silent> <leader>nw :call notesync#Push()<cr>
         augroup Open
             autocmd!
             autocmd! BufWriteCmd <buffer> call notesync#Save()
         augroup END
     endif
+endfunction
+
+function! notesync#View(path)
+    let l:name = expand('%')
+    let l:diff = s:Post(a:path . l:name, getline(1, '$'))
+    keepjumps normal! gg"_dG
+    put = l:diff
+    keepjumps normal! gg"_dd
+endfunction
+
+function! notesync#Push()
+    call notesync#Save()
+    let l:name = expand('%')
+    s:Post('/nw/' . l:name, readfile(s:path . l:name))
 endfunction
 
 function! notesync#Save()
@@ -106,12 +138,14 @@ function! notesync#Delete()
     let l:name = getline('.')
     if line('.') > s:helpLines && confirm('are you sure you want to delete ' . l:name, "&Ok\n&Cancel") == 1
         call delete(s:path . l:name)
-        call notesync#List()
+        setlocal modifiable
+        keepjumps normal! "_dd
+        setlocal nomodifiable
     endif
 endfunction
 
 function! notesync#Add()
-    let l:name = input('name: ')
+    let l:name = substitute(input('name: '), '[^a-zA-Z0-9 ]*', '', 'g')
     normal! :<ESC>
     if index(readdir(s:path), l:name) > -1
         echo 'note already exists'
@@ -139,19 +173,6 @@ function! notesync#Sudo()
     endif
 endfunction
 
-
-function! s:RenderLine(command)
-    let l:line = a:command.name . repeat(' ', 44 - len(a:command.name))
-    if has_key(a:command, 'starred') && a:command.starred
-        let l:line .= '★'
-    else
-        let l:line .= ' '
-    endif
-    if has_key(a:command, 'locked') && a:command.locked
-        let l:line .= ' 🔒'
-    endif
-    return l:line
-endfunction
 
 function! s:UrlEncode(string)
     let l:result = ""

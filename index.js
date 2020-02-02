@@ -2,10 +2,38 @@ const fs = require('fs').promises;
 const path = require('path');
 const express = require('express');
 const bodyParser = require('body-parser');
+const Diff = require('diff');
 
 const app = express();
-app.use(bodyParser.json());
+app.use(bodyParser.text());
 app.listen(4096);
+
+function diff(local, remote) {
+    const diff = Diff.diffLines(remote, local);
+    const prepend = (prefix, value) => (
+        value.trim().split('\n').map(d => prefix + d).join('\n')
+    );
+    console.log(local, remote);
+    return diff.map(item => {
+        if (item.added) {
+            return prepend('+ ', item.value);
+        } else if (item.removed) {
+            return prepend('- ', item.value);
+        } else {
+            return item.value.trim();
+        }
+    }).join('\n');
+}
+
+function merge(local, remote) {
+    const diff = Diff.diffLines(remote, local);
+    const prepend = (prefix, value) => (
+        value.trim().split('\n').map(d => prefix + d).join('\n')
+    );
+    return diff.map(item => {
+        return item.value.trim();
+    }).join('\n');
+}
 
 (async () => {
     const exists = async (dir) => !!await fs.stat(dir).catch(_ => false);
@@ -15,32 +43,35 @@ app.listen(4096);
     }
 
     app.use('*', (req, res, next) => {
-        req.params.name = (req.params.name || '').replace(/^[a-zA-Z0-9\s]+$/, '');
+        req.getPath = () => (
+            path.join(dir, (req.params.name || '').replace(/[^a-zA-Z0-9\s]+/g, ''))
+        );
         res.set('Content-Type', 'text/plain')
         next();
     });
 
-    app.get('/n/:name', async (req, res) => {
-        const notePath = path.join(dir, req.params.name)
-        if (await exists(notePath)) {
-            res.send(await fs.readFile(notePath, 'utf8'));
-        } else {
-            await fs.writeFile(notePath, '', 'utf8')
-            res.send('');
-        }
+    app.post('/ns/:name', async (req, res) => {
+        const notePath = req.getPath();
+        const note = await exists(notePath) ? await fs.readFile(notePath, 'utf8') : '';
+        res.send(diff(note, req.body));
     });
 
-    app.post('/n/:name', async (req, res) => {
-        const notePath = path.join(dir, req.params.name)
-        if (await exists(notePath)) {
-            console.log('todo: merge');
-        } else {
-        }
-        await fs.writeFile(notePath, req.body, 'utf8')
+    app.post('/nd/:name', async (req, res) => {
+        const notePath = req.getPath();
+        const note = await exists(notePath) ? await fs.readFile(notePath, 'utf8') : '';
+        res.send(merge(note, req.body));
     });
 
-    app.get('/list', async (req, res) => {
-        res.send((await fs.readdir(dir)).join('\n'));
+    app.post('/nw/:name', async (req, res) => {
+        const notePath = req.getPath();
+        await fs.writeFile(notePath, req.body, 'utf8');
+        res.end();
+    });
+
+    app.post('/list', async (req, res) => {
+        const server = (await fs.readdir(dir)).join('\n');
+        const vim = req.body.replace(/\//g, '\n');
+        res.send(diff(server, vim));
     });
 
     // :NList
