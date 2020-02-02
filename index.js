@@ -9,7 +9,7 @@ app.use(bodyParser.text());
 app.listen(4096);
 
 function diff(local, remote) {
-    const diff = Diff.diffLines(remote, local);
+    const diff = Diff.diffLines(remote + '\n', local + '\n');
     const prepend = (prefix, value) => (
         value.trim().split('\n').map(d => prefix + d).join('\n')
     );
@@ -59,10 +59,23 @@ function diff(local, remote) {
 
     app.use('*', (req, res, next) => {
         req.getPath = () => (
-            path.join(dir, (req.params.name || '').replace(/[^a-zA-Z0-9\s]+/g, ''))
+            path.join(dir, '/' + (req.params.name.replace(/\+/g, ' ') || '')
+                .replace(/[^a-zA-Z0-9\s]+/g, ''))
         );
         res.set('Content-Type', 'text/plain')
         next();
+    });
+
+    app.get('/n/:name', async (req, res) => {
+        const notePath = req.getPath();
+        const note = await exists(notePath) ? await fs.readFile(notePath, 'utf8') : '';
+        res.send(note);
+    });
+
+    app.get('/d/:name', async (req, res) => {
+        const notePath = req.getPath();
+        await fs.unlink(notePath);
+        res.end();
     });
 
     const view = (path, callback) => {
@@ -80,7 +93,7 @@ function diff(local, remote) {
     // both
     view('/nd/:name', (note, req, res) => {
         const diff = Diff.diffLines(note, req.body);
-        res.send(diff.map(item => item.value.trim()).join('\n'));
+        res.send(diff.ap(item => item.value.trim()).join('\n'));
     });
 
     // added

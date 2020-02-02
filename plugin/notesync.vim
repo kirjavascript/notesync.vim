@@ -1,4 +1,4 @@
-let s:endpoint = get(g:, 'notesURL', 'http://localhost') . ':4096'
+let s:endpoint = get(g:, 'notesURL', 'http://kirjava.xyz') . ':4096'
 let s:path = expand('<sfile>:p:h') . '/notes/'
 let s:keypath = expand('<sfile>:p:h') . '/.key'
 let s:helpLines = 3
@@ -78,18 +78,50 @@ endfunction
 function! notesync#ListDiff()
     let l:newlist = s:Post('/list', join(readdir(s:path), '/'))
     call s:GetBuffer('.notes.diff')
-    call s:DrawListing('o:open c:clone d:local D:delete')
+    call s:DrawListing('o:open c:clone d:local p:push D:delete')
     put = l:newlist
     call s:LockBuffer()
 
+    noremap <buffer> <silent> o :call notesync#Open()<cr>
+    noremap <buffer> <silent> c :call notesync#Clone()<cr>
     noremap <buffer> <silent> d :call notesync#List()<cr>
+    noremap <buffer> <silent> p :call notesync#PushLocal()<cr>
+    noremap <buffer> <silent> D :call notesync#DeleteRemote()<cr>
+endfunction
 
-    " open should open & merge
+function! notesync#PushLocal()
+    let l:name = getline('.')
+    if line('.') > s:helpLines && l:name[0] == '-'
+        set modifiable
+        keepjumps normal! "_x"_x
+        call notesync#Open()
+        call notesync#Push()
+    endif
+endfunction
+
+
+function! notesync#DeleteRemote()
+    let l:name = getline('.')
+    let l:normal = l:name[0] != '+' && l:name[0] != '-'
+    if line('.') > s:helpLines && l:normal && confirm('delete remote copy of ' . l:name . '?', "&Ok\n&Cancel") == 1
+        call s:Fetch('/d/' . s:UrlConv(l:name))
+        call notesync#ListDiff()
+    endif
+endfunction
+
+function! notesync#Clone()
+    let l:name = getline('.')
+    if line('.') > s:helpLines && l:name[0] == '+'
+        let l:name = l:name[2:]
+        call writefile(split(s:Fetch('/n/' . s:UrlConv(l:name)), '\n'), s:path . l:name)
+        call notesync#ListDiff()
+    endif
 endfunction
 
 function! notesync#Open()
-    if line('.') > s:helpLines
-        let l:name = getline('.')
+    let l:name = getline('.')
+    let l:normal = l:name[0] != '+' && l:name[0] != '-'
+    if line('.') > s:helpLines && l:normal
         call s:GetBuffer(l:name)
         put = readfile(s:path . l:name)
         keepjumps normal! gg"_dd
@@ -115,7 +147,7 @@ endfunction
 
 function! notesync#View(path)
     let l:name = expand('%')
-    let l:diff = s:Post(a:path . l:name, readfile(s:path . l:name))
+    let l:diff = s:Post(a:path . s:UrlConv(l:name), readfile(s:path . l:name))
     keepjumps normal! gg"_dG
     put = l:diff
     keepjumps normal! gg"_dd
@@ -125,7 +157,7 @@ function! notesync#Push()
     if confirm('push local changes remotely? ', "&Ok\n&Cancel") == 1
         call notesync#Save()
         let l:name = expand('%')
-        call s:Post('/nw/' . l:name, readfile(s:path . l:name))
+        call s:Post('/nw/' . s:UrlConv(l:name), readfile(s:path . l:name))
         echo 'pushed ' . l:name
     endif
 endfunction
@@ -163,41 +195,8 @@ function! notesync#Add()
     endif
 endfunction
 
-
-function! notesync#Sudo()
-    let l:password = inputsecret('password: ')
-    normal! :<ESC>
-    if len(l:password) && l:password != s:password
-        echo 'notesync: password changed'
-        let s:password = l:password
-    else
-        echo 'notesync: password not changed'
-    endif
-endfunction
-
-
-function! s:UrlEncode(string)
-    let l:result = ""
-
-    let l:characters = split(a:string, '.\zs')
-    for l:character in l:characters
-        let l:ascii_code = char2nr(l:character)
-        if l:character == " "
-            let l:result = l:result . "+"
-        elseif (l:ascii_code >= 48 && l:ascii_code <= 57) || (l:ascii_code >= 65 && l:ascii_code <= 90) || (l:ascii_code >= 97 && l:ascii_code <= 122) || (l:character == "-" || l:character == "_" || l:character == "." || l:character == "~")
-            let l:result = l:result . l:character
-        else
-            let i = 0
-            while i < strlen(l:character)
-                let byte = strpart(l:character, i, 1)
-                let decimal = char2nr(byte)
-                let l:result = l:result . "%" . printf("%02x", decimal)
-                let i += 1
-            endwhile
-        endif
-    endfor
-
-    return l:result
+function! s:UrlConv(string)
+    return substitute(a:string, ' ', '+', 'g')
 endfunction
 
 command! NSync call notesync#List()
