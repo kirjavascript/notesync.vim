@@ -44,6 +44,8 @@ app.listen(4096);
     });
 
     // :NList
+    // ;NDiff
+    // ;NPush
     // if no password, check for password
 
     // diff two files

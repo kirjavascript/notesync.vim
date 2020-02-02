@@ -1,8 +1,9 @@
 let s:endpoint = get(g:, 'notesURL', 'http://localhost:4096')
+let s:path = expand('<sfile>:p:h') . '/notes/'
 let s:password = ''
 let s:help="📝 notes - " . s:endpoint ."
-         \\n o:open a:add D:delete
-         \\n-----------------------"
+         \\n o:open a:add d:diff D:delete
+         \\n------------------------------"
 let s:helpLines = 3
 let s:list = []
 
@@ -27,131 +28,105 @@ function! s:Post(url, body)
 endfunction
 
 function! s:GetBuffer(name)
-    if bufwinnr(a:name) > 0
-        enew
-        silent execute 'file ' . a:name
-    else
-        silent execute 'edit ' . a:name
-        keepjumps normal! gg"_dG
-        setlocal modifiable
+    let l:name = expand('%')
+    if l:name != a:name
+        " if bufwinnr(a:name) > 0
+        "     enew
+        "     silent execute 'file ' . a:name
+        " else
+            silent execute 'edit ' . a:name
+        " endif
     endif
+    setlocal noswapfile
+    setlocal nowrap
+    setlocal filetype=notesync
+    setlocal modifiable
+    keepjumps normal! gg"_dG
+endfunction
+
+function! s:DrawList()
+    setlocal modifiable
+    keepjumps normal! gg"_dG
+    put = s:help
+    keepjumps normal! gg"_ddG
+    for note in readdir(s:path)
+        put = note
+    endfor
+    keepjumps normal! gg
+    let &modified = 0
+    setlocal nomodifiable
 endfunction
 
 function! notesync#List()
-
-    " needs to work offline
-    echo 'loading notes'
-    let l:list = s:Fetch('/list')
-    call s:GetBuffer('/notes/')
-    put = s:help
-    keepjumps normal! gg"_ddG
-    put = l:list
-
-    let &modified = 0
+    call mkdir(s:path, 'p')
+    call s:GetBuffer('.notes')
+    call s:DrawList()
     setlocal buftype=nofile
-    setlocal noswapfile
-    setlocal nowrap
-    setlocal nomodifiable
 
-    set filetype=notesync
-    " syntax match Type /★/
-    " syntax match Include /🔒/
-    " syntax match Operator /^\(\S*\)/
-    " syntax match Comment /\%3l-/
-    " syntax match String /\%1lnibblr/
-    " syntax match Constant /\%1ljr/
-    " syntax match Type /\%2l\(\S\):/
+    syntax match Include /📝/
+    syntax match Constant /^\(\S*\)/
+    syntax match Comment /\%3l-/
+    syntax match String /\%1l.*/
+    syntax match Type /\%2l\(\S\):/
 
-    " noremap <buffer> <silent> o :call notesync#Get()<cr>
-    " noremap <buffer> <silent> S :call notesync#Sudo()<cr>
-    " noremap <buffer> <silent> D :call notesync#Delete()<cr>
-    " noremap <buffer> <silent> l :call notesync#Lock()<cr>
-    " noremap <buffer> <silent> s :call notesync#Star()<cr>
-    " noremap <buffer> <silent> a :call notesync#Add()<cr>
+    noremap <buffer> <silent> o :call notesync#Open()<cr>
+    noremap <buffer> <silent> a :call notesync#Add()<cr>
+    " noremap <buffer> <silent> d :call notesync#ListDiff()<cr>
+    noremap <buffer> <silent> D :call notesync#Delete()<cr>
+
+    augroup List
+        autocmd!
+        autocmd FocusGained <buffer> call s:DrawList()
+    augroup END
 endfunction
 
-function! notesync#Get()
+function! notesync#Open()
     if line('.') > s:helpLines
-        let l:name = s:GetCommandName()
-
-        if bufwinnr(l:name) > 0
-            enew
-            silent execute 'file ' . l:name
-        else
-            silent execute 'edit ' . l:name
-            keepjumps normal! gg"_dG
-        endif
-
-        let s:res = s:GetJSON('command/get/' . s:UrlEncode(l:name))
-
-        if has_key(s:res, 'error')
-            echo 'notesync: ' . s:res.error
-        else
-            put = s:res.command
-            %s///e
-            keepjumps normal! gg"_dd
-            let &modified = 0
-            setlocal filetype=javascript
-            setlocal fileformat=unix
-            setlocal buftype=acwrite
-            setlocal noswapfile
-            autocmd! BufWriteCmd <buffer> call notesync#Set()
-        endif
+        let l:name = getline('.')
+        call s:GetBuffer(l:name)
+        put = readfile(s:path . l:name)
+        keepjumps normal! gg"_dd
+        let &modified = 0
+        setlocal fileformat=unix
+        setlocal buftype=acwrite
+        augroup Open
+            autocmd!
+            autocmd! BufWriteCmd <buffer> call notesync#Save()
+        augroup END
     endif
 endfunction
 
-function! notesync#Set()
+function! notesync#Save()
     let l:name = expand('%')
-    let l:buf = join(getline(1, '$'), "\n")
-    let l:obj = { 'command': l:buf }
-    let s:res = s:PostJSON('command/set/' . s:UrlEncode(l:name), l:obj)
-    if has_key(s:res, 'error')
-        echo 'notesync: ' . s:res.error
-    else
-        let &modified = 0
-    endif
+    call writefile(getline(1, '$'), s:path . l:name)
+    let &modified = 0
 endfunction
 
 function! notesync#Delete()
-    let l:name = s:GetCommandName()
+    let l:name = getline('.')
     if line('.') > s:helpLines && confirm('are you sure you want to delete ' . l:name, "&Ok\n&Cancel") == 1
-
-        let s:res = s:PostJSON('command/delete/' . s:UrlEncode(l:name), {})
-        if has_key(s:res, 'error')
-            echo 'notesync: ' . s:res.error
-        else
-            setlocal modifiable
-            normal! "_dd
-            setlocal nomodifiable
-        endif
+        call delete(s:path . l:name)
+        call notesync#List()
     endif
 endfunction
 
 function! notesync#Add()
-    if line('.') < s:helpLines
-        normal! jjj
-    endif
-    let l:name = input('new command name: ')
-    " hack to clear the input prompt
+    let l:name = input('name: ')
     normal! :<ESC>
-    let s:res = s:PostJSON('command/new/' . s:UrlEncode(l:name), {})
-    if has_key(s:res, 'error')
-        echo 'notesync: ' . s:res.error
+    if index(readdir(s:path), l:name) > -1
+        echo 'note already exists'
     else
+        if line('.') < s:helpLines
+            normal! jjj
+        endif
         setlocal modifiable
-        put = s:RenderLine({ 'name' : l:name})
+        put = l:name
         setlocal nomodifiable
-        call notesync#Get()
+        call writefile([], s:path . l:name)
+        call notesync#Open()
     endif
 endfunction
 
-function! notesync#Lock()
-    call s:ToggleSetting('locked')
-endfunction
-
-function! notesync#Star()
-    call s:ToggleSetting('starred')
-endfunction
 
 function! notesync#Sudo()
     let l:password = inputsecret('password: ')
@@ -164,27 +139,6 @@ function! notesync#Sudo()
     endif
 endfunction
 
-function! s:ToggleSetting(setting)
-    if line('.') > s:helpLines
-        let l:name = s:GetCommandName()
-        for command in s:list
-            if command.name == l:name
-                let l:config = { a:setting : s:Flip(command[a:setting]) }
-                let s:res = s:PostJSON('command/set-config/' . s:UrlEncode(l:name), l:config)
-                if has_key(s:res, 'error')
-                    echo 'notesync: ' . s:res.error
-                else
-                    let command[a:setting] = s:Flip(command[a:setting])
-                    setlocal modifiable
-                    put = s:RenderLine(command)
-                    normal! kdd
-                    setlocal nomodifiable
-                endif
-                break
-            endif
-        endfor
-    endif
-endfunction
 
 function! s:RenderLine(command)
     let l:line = a:command.name . repeat(' ', 44 - len(a:command.name))
