@@ -5,7 +5,7 @@ let s:helpLines = 3
 
 function! s:Curl()
     if filereadable(s:keypath)
-        let l:creds = shellescape('vim:' . readfile(s:keypath))
+        let l:creds = shellescape('vim:' . join(readfile(s:keypath), ''))
         return 'curl --user ' . l:creds . ' '
     else
         echoerr 'secret key missing'
@@ -78,7 +78,7 @@ endfunction
 function! notesync#ListDiff()
     let l:newlist = s:Post('/list', join(readdir(s:path), '/'))
     call s:GetBuffer('.notes.diff')
-    call s:DrawListing('d:local')
+    call s:DrawListing('o:open c:clone d:local D:delete')
     put = l:newlist
     call s:LockBuffer()
 
@@ -122,7 +122,7 @@ function! notesync#View(path)
 endfunction
 
 function! notesync#Push()
-    if confirm('push local changes remotely? ' . l:name, "&Ok\n&Cancel") == 1
+    if confirm('push local changes remotely? ', "&Ok\n&Cancel") == 1
         call notesync#Save()
         let l:name = expand('%')
         call s:Post('/nw/' . l:name, readfile(s:path . l:name))

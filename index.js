@@ -37,8 +37,9 @@ function diff(local, remote) {
         process.exit(0);
     }
 
-    const key = await fs.readFile(keyPath, 'utf8');
+    const key = (await fs.readFile(keyPath, 'utf8')).trim();
 
+    const basicAuth = /^\s*basic\s+(.+)$/i
     app.use('*', (req, res, next) => {
         const Xauth = req.headers['x-authorization'];
         const authorization = Xauth || req.headers.authorization;
@@ -76,25 +77,30 @@ function diff(local, remote) {
         res.send(diff(note, req.body));
     });
 
+    // both
     view('/nd/:name', (note, req, res) => {
-        const diff = Diff.diffLines(note, req.body);
-        res.send(diff.filter(d => d.added).map(item => item.value.trim()).join('\n'));
-    });
-
-    view('/nf/:name', (note, req, res) => {
-        const diff = Diff.diffLines(note, req.body);
-        res.send(diff.filter(d => d.removed).map(item => item.value.trim()).join('\n'));
-    });
-
-    view('/ng/:name', (note, req, res) => {
         const diff = Diff.diffLines(note, req.body);
         res.send(diff.map(item => item.value.trim()).join('\n'));
     });
 
+    // added
+    view('/nf/:name', (note, req, res) => {
+        const diff = Diff.diffLines(note, req.body);
+        res.send(diff.filter(d => d.added).map(item => item.value.trim()).join('\n'));
+    });
+
+    // removed
+    view('/ng/:name', (note, req, res) => {
+        const diff = Diff.diffLines(note, req.body);
+        res.send(diff.filter(d => d.removed).map(item => item.value.trim()).join('\n'));
+    });
+
+    // remote
     view('/nh/:name', (note, _req, res) => {
         res.send(note);
     });
 
+    // push
     app.post('/nw/:name', async (req, res) => {
         const notePath = req.getPath();
         await fs.writeFile(notePath, req.body, 'utf8');
