@@ -50,6 +50,7 @@ function! s:DrawListing(help)
     syntax match Error /\- .*/
     syntax match String /+ .*/
 
+
     keepjumps normal! gg"_ddG
 endfunction
 
@@ -155,8 +156,8 @@ function! notesync#Open()
         setlocal fileformat=unix
         setlocal buftype=acwrite
 
-        syntax match Error /\- .*/
-        syntax match String /+ .*/
+        syntax match Error /\_^\- .*/
+        syntax match String /\_^+ .*/
 
         noremap <buffer> <silent> <leader>ns :call notesync#View('/ns/')<cr>
         noremap <buffer> <silent> <leader>nd :call notesync#View('/nd/')<cr>
