@@ -126,19 +126,4 @@ function diff(local, remote) {
         res.send(diff(server, vim));
     });
 
-    // :NList
-    // ;NDiff
-    // ;NPush
-    // if no password, check for password
-
-    // diff two files
-
-    // MERGE on post
-    // just show conflict if it exists
-
-// get
-// set
-// list
-// auth
-
 })();

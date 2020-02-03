@@ -61,9 +61,11 @@ function! s:LockBuffer()
 endfunction
 
 function! notesync#List()
-    call mkdir(s:path, 'p')
+    if !filereadable(s:path)
+        call mkdir(s:path, 'p')
+    endif
     call s:GetBuffer('.notes')
-    call s:DrawListing('o:open a:add d:diff D:delete')
+    call s:DrawListing('o:open a:add d:diff D:delete h:help')
     for note in readdir(s:path)
         put = note
     endfor
@@ -73,12 +75,13 @@ function! notesync#List()
     noremap <buffer> <silent> a :call notesync#Add()<cr>
     noremap <buffer> <silent> d :call notesync#ListDiff()<cr>
     noremap <buffer> <silent> D :call notesync#Delete()<cr>
+    noremap <buffer> <silent> h :call notesync#Help()<cr>
 endfunction
 
 function! notesync#ListDiff()
     let l:newlist = s:Post('/list', join(readdir(s:path), '/'))
     call s:GetBuffer('.notes.diff')
-    call s:DrawListing('o:open c:clone d:local p:push D:delete')
+    call s:DrawListing('o:open c:clone d:local p:push D:delete h:help')
     put = l:newlist
     call s:LockBuffer()
 
@@ -87,6 +90,29 @@ function! notesync#ListDiff()
     noremap <buffer> <silent> d :call notesync#List()<cr>
     noremap <buffer> <silent> p :call notesync#PushLocal()<cr>
     noremap <buffer> <silent> D :call notesync#DeleteRemote()<cr>
+    noremap <buffer> <silent> h :call notesync#Help()<cr>
+endfunction
+
+function! notesync#Help()
+    call mkdir(s:path, 'p')
+    call s:GetBuffer('.notes.help')
+    call s:DrawListing('d:local')
+    put = 'specify a URL with let g:notesURL = ' . shellescape('https://something.cool')
+    put = ''
+    put = 'put your secret key in  ' . s:path . '.key'
+    put = ''
+    put = 'you can only remotely delete something you already have locally'
+    put = ''
+    put = 'mapped commands in notes'
+    put = ''
+    put = '<leader>ns view a remote diff'
+    put = '<leader>nd view force merge'
+    put = '<leader>nf view added lines'
+    put = '<leader>ng view removed lines'
+    put = '<leader>nh view remote file'
+    put = '<leader>nw push changes to remote'
+    syntax match Function /<\(.*\)>/
+    call s:LockBuffer()
 endfunction
 
 function! notesync#PushLocal()
@@ -122,7 +148,7 @@ function! notesync#Open()
     let l:name = getline('.')
     let l:normal = l:name[0] != '+' && l:name[0] != '-'
     if line('.') > s:helpLines && l:normal
-        call s:GetBuffer(l:name)
+        call s:GetBuffer('.notes/' . l:name)
         put = readfile(s:path . l:name)
         keepjumps normal! gg"_dd
         let &modified = 0
@@ -145,8 +171,12 @@ function! notesync#Open()
     endif
 endfunction
 
+function s:GetNoteName()
+    return substitute(expand('%'), '^.notes/', '', '')
+endfunction
+
 function! notesync#View(path)
-    let l:name = expand('%')
+    let l:name = s:GetNoteName()
     let l:diff = s:Post(a:path . s:UrlConv(l:name), readfile(s:path . l:name))
     keepjumps normal! gg"_dG
     put = l:diff
@@ -156,14 +186,14 @@ endfunction
 function! notesync#Push()
     if confirm('push local changes remotely? ', "&Ok\n&Cancel") == 1
         call notesync#Save()
-        let l:name = expand('%')
+        let l:name = s:GetNoteName()
         call s:Post('/nw/' . s:UrlConv(l:name), readfile(s:path . l:name))
         echo 'pushed ' . l:name
     endif
 endfunction
 
 function! notesync#Save()
-    let l:name = expand('%')
+    let l:name = s:GetNoteName()
     call writefile(getline(1, '$'), s:path . l:name)
     let &modified = 0
 endfunction
