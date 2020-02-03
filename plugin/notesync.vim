@@ -158,6 +158,12 @@ function! notesync#Open()
 
         syntax match Error /\_^\- .*/
         syntax match String /\_^+ .*/
+        syntax match txtNumber "\<\d\+\>"
+        syntax match nonalphabet "[\<\>\=\!\/\:\\£\$\%€\^\&\*\(\)\[\]\?]"
+        syntax match lineURL /\(https\?\|ftps\?\|git\|ssh\):\/\/\(\w\+\(:\w\+\)\?@\)\?\([A-Za-z][-_0-9A-Za-z]*\.\)\{1,}\(\w\{2,}\.\?\)\{1,}\(:[0-9]\{1,5}\)\?\S*/
+        highlight def link txtNumber Function
+        highlight def link lineURL Number
+        highlight def link nonalphabet Function
 
         noremap <buffer> <silent> <leader>ns :call notesync#View('/ns/')<cr>
         noremap <buffer> <silent> <leader>nd :call notesync#View('/nd/')<cr>
